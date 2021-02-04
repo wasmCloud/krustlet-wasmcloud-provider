@@ -1,0 +1,111 @@
+name: Build and Test
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+jobs:
+  build:
+    runs-on: ${{ matrix.config.os }}
+    env: ${{ matrix.config.env }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {
+              os: "ubuntu-latest",
+              arch: "amd64",
+              args: "",
+              url: "https://github.com/casey/just/releases/download/v0.5.11/just-v0.5.11-x86_64-unknown-linux-musl.tar.gz",
+              name: "just",
+              pathInArchive: "just",
+              env: {},
+            }
+          - {
+              os: "ubuntu-latest",
+              arch: "aarch64",
+              args: "--target aarch64-unknown-linux-gnu",
+              url: "https://github.com/casey/just/releases/download/v0.5.11/just-v0.5.11-x86_64-unknown-linux-musl.tar.gz",
+              name: "just",
+              pathInArchive: "just",
+              env: { OPENSSL_DIR: "/usr/local/openssl-aarch64" },
+            }
+          - {
+              os: "macos-latest",
+              arch: "amd64",
+              args: "",
+              url: "https://github.com/casey/just/releases/download/v0.5.11/just-v0.5.11-x86_64-apple-darwin.tar.gz",
+              name: "just",
+              pathInArchive: "just",
+              env: {},
+            }
+    steps:
+      - uses: actions/checkout@v2
+      - uses: engineerd/configurator@v0.0.5
+        with:
+          name: ${{ matrix.config.name }}
+          url: ${{ matrix.config.url }}
+          pathInArchive: ${{ matrix.config.pathInArchive }}
+      # hack(bacongobbler): install rustfmt to work around darwin toolchain issues
+      - name: "(macOS) install dev tools"
+        if: runner.os == 'macOS'
+        run: |
+          rustup component add rustfmt --toolchain stable-x86_64-apple-darwin
+          rustup component add clippy --toolchain stable-x86_64-apple-darwin
+          rustup update stable
+      - name: setup for cross-compile builds
+        if: matrix.config.arch == 'aarch64'
+        run: |
+          sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          cd /tmp
+          git clone https://github.com/openssl/openssl
+          cd openssl
+          git checkout OpenSSL_1_1_1h
+          sudo mkdir -p $OPENSSL_DIR
+          ./Configure linux-aarch64 --prefix=$OPENSSL_DIR --openssldir=$OPENSSL_DIR shared
+          make CC=aarch64-linux-gnu-gcc
+          sudo make install
+          rustup target add aarch64-unknown-linux-gnu
+      - name: Build
+        run: |
+          just build ${{ matrix.config.args }}
+          just test
+  windows-build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        # For some reason, running with the default powershell doesn't work with the `Build` step,
+        # but bash does!
+        shell: bash
+    steps:
+      - uses: actions/checkout@v2
+      - uses: engineerd/configurator@v0.0.5
+        with:
+          name: just
+          url: "https://github.com/casey/just/releases/download/v0.5.11/just-v0.5.11-x86_64-pc-windows-msvc.zip"
+          pathInArchive: just.exe
+      - name: Build
+        run: |
+          just --justfile justfile-windows build
+          just --justfile justfile-windows test
+  # TODO: Figure out how to get kind or minikube running on a windows test host and see how we can
+  # get things working with rustls
+  # windows-e2e:
+  #   runs-on: windows-latest
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: engineerd/setup-kind@v0.5.0
+        with:
+          version: "v0.10.0"
+      - uses: engineerd/configurator@v0.0.5
+        with:
+          name: just
+          url: https://github.com/casey/just/releases/download/v0.5.11/just-v0.5.11-x86_64-unknown-linux-musl.tar.gz
+          pathInArchive: just
+      - name: Run e2e tests
+        run: just test-e2e-standalone
+      - name: Output krustlet logs (on error)
+        if: ${{ failure() }}
+        run: cat *.txt
