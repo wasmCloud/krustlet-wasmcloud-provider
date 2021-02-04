@@ -104,12 +104,12 @@ jobs:
       - name: calculate checksum (all except macOS)
         shell: bash
         if: runner.os != 'macOS'
-        run: sha256sum krustlet-wasmcloud-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.tar.gz > checksum-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.txt
+        run: sha256sum _dist/krustlet-wasmcloud-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.tar.gz > _dist/checksum-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.txt
 
       - name: calculate checksum (macOS)
         shell: bash
         if: runner.os == 'macOS'
-        run: shasum -a 256 krustlet-wasmcloud-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.tar.gz > checksum-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.txt
+        run: shasum -a 256 _dist/krustlet-wasmcloud-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.tar.gz > _dist/checksum-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.txt
 
       - name: Upload tarball
         uses: actions/upload-artifact@v1
