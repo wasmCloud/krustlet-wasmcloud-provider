@@ -11,6 +11,7 @@ jobs:
     runs-on: ${{ matrix.config.os }}
     env: ${{ matrix.config.env }}
     strategy:
+      fail-fast: false
       matrix:
         config:
           - {
