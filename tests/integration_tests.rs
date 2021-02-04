@@ -5,22 +5,22 @@ use kube_runtime::watcher::{watcher, Event};
 use serde_json::json;
 
 #[tokio::test]
-async fn test_wascc_provider() -> Result<(), Box<dyn std::error::Error>> {
+async fn test_wasmcloud_provider() -> Result<(), Box<dyn std::error::Error>> {
     let client = kube::Client::try_default().await?;
 
     let nodes: Api<Node> = Api::all(client);
 
-    let node = nodes.get("krustlet-wascc").await?;
+    let node = nodes.get("krustlet-wasmcloud").await?;
 
-    verify_wascc_node(node).await;
+    verify_wasmcloud_node(node).await;
 
     let client: kube::Client = nodes.into();
 
-    let _cleaner = WasccTestResourceCleaner {};
+    let _cleaner = WasmCloudTestResourceCleaner {};
 
     let pods: Api<Pod> = Api::namespaced(client.clone(), "default");
 
-    create_wascc_pod(client.clone(), &pods).await?;
+    create_wasmcloud_pod(client.clone(), &pods).await?;
 
     let mut tries: u8 = 0;
     loop {
@@ -30,13 +30,13 @@ async fn test_wascc_provider() -> Result<(), Box<dyn std::error::Error>> {
         }
         tries += 1;
         if tries == 10 {
-            panic!("Wascc pod failed 10 readiness checks.");
+            panic!("wasmCloud pod failed 10 readiness checks.");
         }
         tokio::time::delay_for(std::time::Duration::from_millis(100)).await;
     }
 
     let logs = pods
-        .logs("greet-wascc", &LogParams::default())
+        .logs("greet-wasmcloud", &LogParams::default())
         .await
         .expect("unable to get logs");
     assert!(logs.contains("warn something"));
@@ -47,7 +47,7 @@ async fn test_wascc_provider() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn verify_wascc_node(node: Node) {
+async fn verify_wasmcloud_node(node: Node) {
     let node_status = node.status.expect("node reported no status");
     assert_eq!(
         node_status
@@ -65,7 +65,7 @@ async fn verify_wascc_node(node: Node) {
             .expect("node had no labels")
             .get("kubernetes.io/arch")
             .expect("node did not have kubernetes.io/arch label"),
-        "wasm32-wascc"
+        "wasm32-wasmcloud"
     );
 
     let taints = node
@@ -84,7 +84,7 @@ async fn verify_wascc_node(node: Node) {
         &Taint {
             effect: "NoExecute".to_owned(),
             key: "kubernetes.io/arch".to_owned(),
-            value: Some("wasm32-wascc".to_owned()),
+            value: Some("wasm32-wasmcloud".to_owned()),
             ..Default::default()
         }
     );
@@ -100,23 +100,23 @@ async fn verify_wascc_node(node: Node) {
         &Taint {
             effect: "NoSchedule".to_owned(),
             key: "kubernetes.io/arch".to_owned(),
-            value: Some("wasm32-wascc".to_owned()),
+            value: Some("wasm32-wasmcloud".to_owned()),
             ..Default::default()
         }
     );
 }
 
-async fn create_wascc_pod(client: kube::Client, pods: &Api<Pod>) -> anyhow::Result<()> {
+async fn create_wasmcloud_pod(client: kube::Client, pods: &Api<Pod>) -> anyhow::Result<()> {
     let p = serde_json::from_value(json!({
         "apiVersion": "v1",
         "kind": "Pod",
         "metadata": {
-            "name": "greet-wascc"
+            "name": "greet-wasmcloud"
         },
         "spec": {
             "containers": [
                 {
-                    "name": "greet-wascc",
+                    "name": "greet-wasmcloud",
                     "image": "webassembly.azurecr.io/greet-wascc:v0.4",
                     "ports": [
                         {
@@ -131,13 +131,13 @@ async fn create_wascc_pod(client: kube::Client, pods: &Api<Pod>) -> anyhow::Resu
                     "effect": "NoExecute",
                     "key": "kubernetes.io/arch",
                     "operator": "Equal",
-                    "value": "wasm32-wascc"
+                    "value": "wasm32-wasmcloud"
                 },
                 {
                     "effect": "NoSchedule",
                     "key": "kubernetes.io/arch",
                     "operator": "Equal",
-                    "value": "wasm32-wascc"
+                    "value": "wasm32-wasmcloud"
                 },
             ]
         }
@@ -147,32 +147,33 @@ async fn create_wascc_pod(client: kube::Client, pods: &Api<Pod>) -> anyhow::Resu
 
     assert_eq!(pod.status.unwrap().phase.unwrap(), "Pending");
 
-    wait_for_pod_ready(client, "greet-wascc", "default").await?;
+    wait_for_pod_ready(client, "greet-wasmcloud", "default").await?;
 
     Ok(())
 }
 
-struct WasccTestResourceCleaner {}
+struct WasmCloudTestResourceCleaner {}
 
-impl Drop for WasccTestResourceCleaner {
+impl Drop for WasmCloudTestResourceCleaner {
     fn drop(&mut self) {
         let t = std::thread::spawn(move || {
             let mut rt =
                 tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime for cleanup");
-            rt.block_on(clean_up_wascc_test_resources());
+            rt.block_on(clean_up_wasmcloud_test_resources());
         });
 
-        t.join().expect("Failed to clean up wasCC test resources");
+        t.join()
+            .expect("Failed to clean up wasmcloud test resources");
     }
 }
 
-async fn clean_up_wascc_test_resources() {
+async fn clean_up_wasmcloud_test_resources() {
     let client = kube::Client::try_default()
         .await
         .expect("Failed to create client");
 
     let pods: Api<Pod> = Api::namespaced(client.clone(), "default");
-    pods.delete("greet-wascc", &DeleteParams::default())
+    pods.delete("greet-wasmcloud", &DeleteParams::default())
         .await
         .expect("Failed to delete pod");
 }

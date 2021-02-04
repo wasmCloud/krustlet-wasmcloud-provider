@@ -1,6 +1,6 @@
 set shell := ["powershell.exe", "-c"]
 
-export RUST_LOG := "wascc_host=debug,wascc_provider=debug,main=debug"
+export RUST_LOG := "wascc_host=debug,wasmcloud_provider=debug,main=debug"
 export PFX_PASSWORD := "testing"
 export CONFIG_DIR := env_var_or_default('CONFIG_DIR', '$HOME\.krustlet\config')
 
@@ -21,7 +21,7 @@ test-e2e +FLAGS='--no-default-features --features rustls-tls':
     cargo test --test integration_tests {{FLAGS}}
 
 run +FLAGS='--no-default-features --features rustls-tls': bootstrap
-    $env:KUBECONFIG = "$(Invoke-Expression "echo $env:CONFIG_DIR")\kubeconfig-wascc"; cargo run --bin krustlet-wascc {{FLAGS}} -- --node-name krustlet-wascc --port 3000 --bootstrap-file "$(Invoke-Expression "echo $env:CONFIG_DIR")\bootstrap.conf" --cert-file "$(Invoke-Expression "echo $env:CONFIG_DIR")\krustlet-wascc.crt" --private-key-file "$(Invoke-Expression "echo $env:CONFIG_DIR")\krustlet-wascc.key"
+    $env:KUBECONFIG = "$(Invoke-Expression "echo $env:CONFIG_DIR")\kubeconfig-wasmcloud"; cargo run --bin krustlet-wasmcloud {{FLAGS}} -- --node-name krustlet-wasmcloud --port 3000 --bootstrap-file "$(Invoke-Expression "echo $env:CONFIG_DIR")\bootstrap.conf" --cert-file "$(Invoke-Expression "echo $env:CONFIG_DIR")\krustlet-wasmcloud.crt" --private-key-file "$(Invoke-Expression "echo $env:CONFIG_DIR")\krustlet-wasmcloud.key"
 
 bootstrap:
     @# This is to get around an issue with the default function returning a string that gets escaped

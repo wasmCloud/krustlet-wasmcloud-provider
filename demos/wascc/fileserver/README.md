@@ -8,7 +8,7 @@ file based on the URL path provided.
 
 If a DELETE request is made, the file is removed based on the URL path provided.
 
-It is meant to demonstrate how volumes work with the wascc-provider.
+It is meant to demonstrate how volumes work with the wasmcloud-provider.
 
 ## Running the example
 

@@ -1,4 +1,4 @@
-export RUST_LOG := "wascc_host=debug,wascc_provider=debug,main=debug"
+export RUST_LOG := "wascc_host=debug,wasmcloud_provider=debug,main=debug"
 export PFX_PASSWORD := "testing"
 export CONFIG_DIR := env_var_or_default('CONFIG_DIR', '$HOME/.krustlet/config')
 
@@ -18,7 +18,7 @@ test-e2e-standalone:
     cargo run --bin oneclick
 
 run +FLAGS='': bootstrap
-    KUBECONFIG=$(eval echo $CONFIG_DIR)/kubeconfig-wascc cargo run --bin krustlet-wascc {{FLAGS}} -- --node-name krustlet-wascc --port 3000 --bootstrap-file $(eval echo $CONFIG_DIR)/bootstrap.conf --cert-file $(eval echo $CONFIG_DIR)/krustlet-wascc.crt --private-key-file $(eval echo $CONFIG_DIR)/krustlet-wascc.key
+    KUBECONFIG=$(eval echo $CONFIG_DIR)/kubeconfig-wasmcloud cargo run --bin krustlet-wasmcloud {{FLAGS}} -- --node-name krustlet-wasmcloud --port 3000 --bootstrap-file $(eval echo $CONFIG_DIR)/bootstrap.conf --cert-file $(eval echo $CONFIG_DIR)/krustlet-wasmcloud.crt --private-key-file $(eval echo $CONFIG_DIR)/krustlet-wasmcloud.key
 
 bootstrap:
     @# This is to get around an issue with the default function returning a string that gets escaped

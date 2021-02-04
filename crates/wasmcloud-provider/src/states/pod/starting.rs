@@ -15,7 +15,7 @@ use super::running::Running;
 
 /// The Kubelet is starting the Pod.
 #[derive(Default, Debug, TransitionTo)]
-#[transition_to(Running, Error<crate::WasccProvider>)]
+#[transition_to(Running, Error<crate::WasmCloudProvider>)]
 pub struct Starting;
 
 #[async_trait::async_trait]

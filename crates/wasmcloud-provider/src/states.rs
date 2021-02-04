@@ -9,7 +9,7 @@ macro_rules! transition_to_error {
         let aerr = anyhow::Error::from($err);
         log::error!("{:?}", aerr);
         let error_state =
-            kubelet::state::common::error::Error::<crate::WasccProvider>::new(aerr.to_string());
+            kubelet::state::common::error::Error::<crate::WasmCloudProvider>::new(aerr.to_string());
         return Transition::next($slf, error_state);
     }};
 }

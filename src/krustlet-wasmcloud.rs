@@ -4,7 +4,7 @@ use kubelet::store::composite::ComposableStore;
 use kubelet::store::oci::FileStore;
 use kubelet::Kubelet;
 use std::sync::Arc;
-use wascc_provider::WasccProvider;
+use wasmcloud_provider::WasmCloudProvider;
 
 #[tokio::main(threaded_scheduler)]
 async fn main() -> anyhow::Result<()> {
@@ -20,7 +20,8 @@ async fn main() -> anyhow::Result<()> {
     let store = make_store(&config);
     let plugin_registry = Arc::new(PluginRegistry::new(&config.plugins_dir));
 
-    let provider = WasccProvider::new(store, &config, kubeconfig.clone(), plugin_registry).await?;
+    let provider =
+        WasmCloudProvider::new(store, &config, kubeconfig.clone(), plugin_registry).await?;
     let kubelet = Kubelet::new(provider, kubeconfig, config).await?;
     kubelet.start().await
 }

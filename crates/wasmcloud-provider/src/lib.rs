@@ -1,6 +1,6 @@
-//! A custom kubelet backend that can run [waSCC](https://wascc.dev/) based workloads
+//! A custom kubelet backend that can run [wasmCloud](https://github.com/wasmCloud/wasmCloud) based workloads
 //!
-//! The crate provides the [`WasccProvider`] type which can be used
+//! The crate provides the [`WasmCloudProvider`] type which can be used
 //! as a provider with [`kubelet`].
 //!
 //! # Example
@@ -8,7 +8,7 @@
 //! use kubelet::{Kubelet, config::Config};
 //! use kubelet::store::oci::FileStore;
 //! use std::sync::Arc;
-//! use wascc_provider::WasccProvider;
+//! use wasmcloud_provider::WasmCloudProvider;
 //!
 //! async fn start() {
 //!     // Get a configuration for the Kubelet
@@ -21,7 +21,7 @@
 //!     let plugin_registry = Arc::new(Default::default());
 //!
 //!     // Instantiate the provider type
-//!     let provider = WasccProvider::new(store, &kubelet_config, kubeconfig.clone(), plugin_registry).await.unwrap();
+//!     let provider = WasmCloudProvider::new(store, &kubelet_config, kubeconfig.clone(), plugin_registry).await.unwrap();
 //!
 //!     // Instantiate the Kubelet
 //!     let kubelet = Kubelet::new(provider, kubeconfig, kubelet_config).await.unwrap();
@@ -54,7 +54,7 @@ use tokio::sync::RwLock;
 use wascc_fs::FileSystemProvider;
 use wascc_host::{Actor, Host, NativeCapability};
 use wascc_httpsrv::HttpServerProvider;
-use wascc_logging::{LoggingProvider, LOG_PATH_KEY};
+use wasmcloud_logging::{LoggingProvider, LOG_PATH_KEY};
 
 extern crate rand;
 use std::collections::{BTreeMap, HashMap};
@@ -67,7 +67,7 @@ mod states;
 use states::pod::PodState;
 
 /// The architecture that the pod targets.
-const TARGET_WASM32_WASCC: &str = "wasm32-wascc";
+const TARGET_WASM32_WASMCLOUD: &str = "wasm32-wasmcloud";
 
 /// The name of the Filesystem capability.
 const FS_CAPABILITY: &str = "wascc:blobstore";
@@ -78,21 +78,21 @@ const HTTP_CAPABILITY: &str = "wascc:http_server";
 /// The name of the Logging capability.
 const LOG_CAPABILITY: &str = "wascc:logging";
 
-/// The root directory of waSCC logs.
-const LOG_DIR_NAME: &str = "wascc-logs";
+/// The root directory of wasmCloud logs.
+const LOG_DIR_NAME: &str = "wasmcloud-logs";
 
 /// The key used to define the root directory of the Filesystem capability.
 const FS_CONFIG_ROOTDIR: &str = "ROOT";
 
-/// The root directory of waSCC volumes.
+/// The root directory of wasmCloud volumes.
 const VOLUME_DIR: &str = "volumes";
 
 /// Kubernetes' view of environment variables is an unordered map of string to string.
 type EnvVars = std::collections::HashMap<String, String>;
 
-/// A [kubelet::handle::StopHandler] implementation for a wascc actor
+/// A [kubelet::handle::StopHandler] implementation for a wasmCloud actor
 pub struct ActorHandle {
-    /// The public key of the wascc Actor that will be stopped
+    /// The public key of the wasmCloud Actor that will be stopped
     pub key: String,
     host: Arc<Mutex<Host>>,
     volumes: Vec<VolumeBinding>,
@@ -102,7 +102,7 @@ pub struct ActorHandle {
 #[async_trait::async_trait]
 impl StopHandler for ActorHandle {
     async fn stop(&mut self) -> anyhow::Result<()> {
-        debug!("stopping wascc instance {}", self.key);
+        debug!("stopping wasmcloud instance {}", self.key);
         let host = self.host.clone();
         let key = self.key.clone();
         let volumes: Vec<VolumeBinding> = self.volumes.drain(0..).collect();
@@ -135,13 +135,13 @@ impl StopHandler for ActorHandle {
     }
 }
 
-/// WasccProvider provides a Kubelet runtime implementation that executes WASM binaries.
+/// WasmCloudProvider provides a Kubelet runtime implementation that executes WASM binaries.
 ///
-/// Currently, this runtime uses WASCC as a host, loading the primary container as an actor.
+/// Currently, this runtime uses wasmCloud as a host, loading the primary container as an actor.
 /// TODO: In the future, we will look at loading capabilities using the "sidecar" metaphor
 /// from Kubernetes.
 #[derive(Clone)]
-pub struct WasccProvider {
+pub struct WasmCloudProvider {
     shared: ProviderState,
 }
 
@@ -183,8 +183,8 @@ impl GenericProviderState for ProviderState {
     }
 }
 
-impl WasccProvider {
-    /// Returns a new wasCC provider configured to use the proper data directory
+impl WasmCloudProvider {
+    /// Returns a new wasmCloud provider configured to use the proper data directory
     /// (including creating it if necessary)
     pub async fn new(
         store: Arc<dyn Store + Sync + Send>,
@@ -200,7 +200,7 @@ impl WasccProvider {
         tokio::fs::create_dir_all(&log_path).await?;
         tokio::fs::create_dir_all(&volume_path).await?;
 
-        // wascc has native and portable capabilities.
+        // wasmCloud has native and portable capabilities.
         //
         // Native capabilities are either dynamic libraries (.so, .dylib, .dll)
         // or statically linked Rust libaries. If the native capabilty is a dynamic
@@ -212,7 +212,7 @@ impl WasccProvider {
         // don't fully work, and won't until the WASI spec has matured.
         //
         // Here we are using the native capabilties as statically linked libraries that will
-        // be compiled into the wascc-provider binary.
+        // be compiled into the wasmcloud-provider binary.
         let cloned_host = host.clone();
         tokio::task::spawn_blocking(move || {
             info!("Loading HTTP capability");
@@ -258,13 +258,13 @@ struct ModuleRunContext {
 }
 
 #[async_trait]
-impl Provider for WasccProvider {
+impl Provider for WasmCloudProvider {
     type ProviderState = ProviderState;
     type InitialState = Registered<Self>;
     type TerminatedState = Terminated<Self>;
     type PodState = PodState;
 
-    const ARCH: &'static str = TARGET_WASM32_WASCC;
+    const ARCH: &'static str = TARGET_WASM32_WASMCLOUD;
 
     fn provider_state(&self) -> SharedState<ProviderState> {
         Arc::new(RwLock::new(self.shared.clone()))
@@ -302,7 +302,7 @@ impl Provider for WasccProvider {
     }
 }
 
-impl GenericProvider for WasccProvider {
+impl GenericProvider for WasmCloudProvider {
     type ProviderState = ProviderState;
     type PodState = PodState;
     type RunState = crate::states::pod::starting::Starting;
@@ -310,7 +310,7 @@ impl GenericProvider for WasccProvider {
     fn validate_pod_runnable(pod: &Pod) -> anyhow::Result<()> {
         if !pod.init_containers().is_empty() {
             return Err(anyhow::anyhow!(
-                "Cannot run {}: spec specifies init containers which are not supported on wasCC",
+                "Cannot run {}: spec specifies init containers which are not supported on wasmCloud",
                 pod.name()
             ));
         }
@@ -322,7 +322,7 @@ impl GenericProvider for WasccProvider {
     ) -> anyhow::Result<()> {
         if has_args(container) {
             return Err(anyhow::anyhow!(
-                "Cannot run {}: spec specifies container args which are not supported on wasCC",
+                "Cannot run {}: spec specifies container args which are not supported on wasmCloud",
                 container.name()
             ));
         }
@@ -348,7 +348,7 @@ struct VolumeBinding {
     host_path: PathBuf,
 }
 
-/// Capability describes a waSCC capability.
+/// Capability describes a wasmCloud capability.
 ///
 /// Capabilities are made available to actors through a two-part processthread:
 /// - They must be registered
@@ -371,11 +371,11 @@ impl kubelet::log::HandleFactory<tokio::fs::File> for LogHandleFactory {
     }
 }
 
-/// Run the given WASM data as a waSCC actor with the given public key.
+/// Run the given WASM data as a wasmCloud actor with the given public key.
 ///
 /// The provided capabilities will be configured for this actor, but the capabilities
 /// must first be loaded into the host by some other process, such as register_native_capabilities().
-fn wascc_run(
+fn wasmcloud_run(
     host: Arc<Mutex<Host>>,
     data: Vec<u8>,
     env: EnvVars,
@@ -384,7 +384,7 @@ fn wascc_run(
     port_assigned: u16,
 ) -> anyhow::Result<ContainerHandle<ActorHandle, LogHandleFactory>> {
     let mut capabilities: Vec<Capability> = Vec::new();
-    info!("sending actor to wascc host");
+    info!("sending actor to wasmCloud host");
     let log_output = NamedTempFile::new_in(&log_path)?;
 
     let load =
@@ -459,7 +459,7 @@ fn wascc_run(
 
     let log_handle_factory = LogHandleFactory { temp: log_output };
 
-    info!("wascc actor executing");
+    info!("wasmCloud actor executing");
     Ok(ContainerHandle::new(
         ActorHandle {
             host,

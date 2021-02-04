@@ -8,7 +8,7 @@ use crate::{fail_fatal, PodState, ProviderState};
 
 /// The Kubelet is running the Pod.
 #[derive(Debug, TransitionTo)]
-#[transition_to(Error<crate::WasccProvider>)]
+#[transition_to(Error<crate::WasmCloudProvider>)]
 pub struct Running {
     rx: Receiver<anyhow::Result<()>>,
 }

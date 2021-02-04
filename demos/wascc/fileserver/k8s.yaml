@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: fileserver-wascc
+  name: fileserver-wasmcloud
   labels:
-    app: fileserver-wascc
+    app: fileserver-wasmcloud
 spec:
   containers:
     - image: webassembly.azurecr.io/fileserver-wascc:v0.2.0
@@ -14,7 +14,7 @@ spec:
           hostPort: 8080
       volumeMounts:
         - name: storage
-          mountPath: /tmp # this is ignored by waSCC, but is still necessary from the k8s API
+          mountPath: /tmp # this is ignored by wasmCloud, but is still necessary from the k8s API
   volumes:
     - name: storage
       hostPath:
@@ -22,16 +22,16 @@ spec:
         type: Directory
   nodeSelector:
     beta.kubernetes.io/os: linux
-    beta.kubernetes.io/arch: wasm32-wascc
+    beta.kubernetes.io/arch: wasm32-wasmcloud
   tolerations:
     - key: "node.kubernetes.io/network-unavailable"
       operator: "Exists"
       effect: "NoSchedule"
     - key: "kubernetes.io/arch"
       operator: "Equal"
-      value: "wasm32-wascc"
+      value: "wasm32-wasmcloud"
       effect: "NoExecute"
     - key: "kubernetes.io/arch"
       operator: "Equal"
-      value: "wasm32-wascc"
+      value: "wasm32-wasmcloud"
       effect: "NoSchedule"

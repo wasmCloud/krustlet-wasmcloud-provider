@@ -3,7 +3,7 @@
 An example that will respond with the uppercased version of the querystring
 sent in.
 
-It is meant to be a simple demo for the wascc-provider with Krustlet.
+It is meant to be a simple demo for the wasmcloud-provider with Krustlet.
 
 ## Video
 
@@ -18,7 +18,7 @@ your Kubernetes cluster.
 Create the pod and configmap with `kubectl`:
 
 ```shell
-$ kubectl apply -f uppercase-wascc.yaml
+$ kubectl apply -f uppercase-wasmcloud.yaml
 ```
 
 If the container port is specified in the yaml file, but host port is not. A

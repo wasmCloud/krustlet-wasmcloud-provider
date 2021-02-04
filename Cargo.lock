@@ -1964,7 +1964,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
- "wascc-provider",
+ "wasmcloud-provider",
 ]
 
 [[package]]
@@ -4544,42 +4544,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wascc-logging"
-version = "0.1.0"
-dependencies = [
- "log",
- "simplelog",
- "tempfile",
- "wascc-codec",
-]
-
-[[package]]
-name = "wascc-provider"
-version = "0.6.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "k8s-openapi",
- "krator",
- "kube",
- "kubelet",
- "log",
- "oci-distribution",
- "rand 0.7.3",
- "serde",
- "serde_derive",
- "serde_json",
- "tempfile",
- "tokio",
- "wascc-codec",
- "wascc-fs",
- "wascc-host",
- "wascc-httpsrv",
- "wascc-logging",
-]
-
-[[package]]
 name = "wasi"
 version = "0.9.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4680,6 +4644,42 @@ name = "wasm-bindgen-shared"
 version = "0.2.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d649a3145108d7d3fbcde896a468d1bd636791823c9921135218ad89be08307"
+
+[[package]]
+name = "wasmcloud-logging"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "simplelog",
+ "tempfile",
+ "wascc-codec",
+]
+
+[[package]]
+name = "wasmcloud-provider"
+version = "0.6.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "k8s-openapi",
+ "krator",
+ "kube",
+ "kubelet",
+ "log",
+ "oci-distribution",
+ "rand 0.7.3",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "wascc-codec",
+ "wascc-fs",
+ "wascc-host",
+ "wascc-httpsrv",
+ "wasmcloud-logging",
+]
 
 [[package]]
 name = "wasmparser"

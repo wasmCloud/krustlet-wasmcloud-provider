@@ -100,7 +100,7 @@ fn prepare_for_bootstrap() -> BootstrapReadiness {
         .into_string()
         .expect("Can't get host name");
 
-    let cert_paths: Vec<_> = vec!["krustlet-wascc.crt", "krustlet-wascc.key"]
+    let cert_paths: Vec<_> = vec!["krustlet-wasmcloud.crt", "krustlet-wasmcloud.key"]
         .iter()
         .map(|f| config_dir().join(f))
         .collect();
@@ -120,11 +120,11 @@ fn prepare_for_bootstrap() -> BootstrapReadiness {
     // We are not bootstrapped, but there may be existing CSRs around
 
     // TODO: allow override of host names
-    let wascc_host_name = &host_name;
+    let wasmcloud_host_name = &host_name;
 
-    let wascc_cert_name = format!("{}-tls", wascc_host_name);
+    let wasmcloud_cert_name = format!("{}-tls", wasmcloud_host_name);
 
-    let csr_spawn_deletes: Vec<_> = vec!["krustlet-wascc", &wascc_cert_name]
+    let csr_spawn_deletes: Vec<_> = vec!["krustlet-wasmcloud", &wasmcloud_cert_name]
         .iter()
         .map(delete_csr)
         .collect();
@@ -255,7 +255,7 @@ fn launch_kubelet(
 ) -> anyhow::Result<OwnedChildProcess> {
     // run the kubelet as a background process using the
     // same cmd line as in the justfile:
-    // KUBECONFIG=$(eval echo $CONFIG_DIR)/kubeconfig-wascc cargo run --bin krustlet-wascc {{FLAGS}} -- --node-name krustlet-wascc --port 3001 --bootstrap-file $(eval echo $CONFIG_DIR)/bootstrap.conf --cert-file $(eval echo $CONFIG_DIR)/krustlet-wascc.crt --private-key-file $(eval echo $CONFIG_DIR)/krustlet-wascc.key
+    // KUBECONFIG=$(eval echo $CONFIG_DIR)/kubeconfig-wasmcloud cargo run --bin krustlet-wasmcloud {{FLAGS}} -- --node-name krustlet-wasmcloud --port 3001 --bootstrap-file $(eval echo $CONFIG_DIR)/bootstrap.conf --cert-file $(eval echo $CONFIG_DIR)/krustlet-wasmcloud.crt --private-key-file $(eval echo $CONFIG_DIR)/krustlet-wasmcloud.key
     let bootstrap_conf = config_file_path_str("bootstrap.conf");
     let cert = config_file_path_str(format!("{}.crt", name));
     let private_key = config_file_path_str(format!("{}.key", name));
@@ -283,7 +283,7 @@ fn launch_kubelet(
         .env("KUBECONFIG", kubeconfig)
         .env(
             "RUST_LOG",
-            "wascc_host=debug,wascc_provider=debug,main=debug",
+            "wascc_host=debug,wasmcloud_provider=debug,main=debug",
         )
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -405,14 +405,14 @@ impl Drop for OwnedChildProcess {
 }
 
 fn run_tests(readiness: BootstrapReadiness) -> anyhow::Result<()> {
-    let wascc_process_result = launch_kubelet(
-        "krustlet-wascc",
-        "wascc",
+    let wasmcloud_process_result = launch_kubelet(
+        "krustlet-wasmcloud",
+        "wasmcloud",
         3000,
         matches!(readiness, BootstrapReadiness::NeedBootstrapAndApprove),
     );
 
-    match wascc_process_result {
+    match wasmcloud_process_result {
         Err(e) => {
             eprintln!("Error running kubelet process: {}", e);
             return Err(anyhow::anyhow!("Error running kubelet process: {}", e));
@@ -422,19 +422,20 @@ fn run_tests(readiness: BootstrapReadiness) -> anyhow::Result<()> {
 
     let test_result = run_test_suite();
 
-    let mut wascc_process = wascc_process_result.unwrap();
+    let mut wasmcloud_process = wasmcloud_process_result.unwrap();
 
     if matches!(test_result, Err(_)) {
-        warn_if_premature_exit(&mut wascc_process, "krustlet-wascc");
+        warn_if_premature_exit(&mut wasmcloud_process, "krustlet-wasmcloud");
         // TODO: ideally we shouldn't have to wait for termination before getting logs
-        let terminate_result = wascc_process.terminate();
+        let terminate_result = wasmcloud_process.terminate();
         match terminate_result {
             Ok(_) => {
-                let wascc_log_destination = std::path::PathBuf::from("./krustlet-wascc-e2e");
+                let wasmcloud_log_destination =
+                    std::path::PathBuf::from("./krustlet-wasmcloud-e2e");
                 capture_kubelet_logs(
-                    "krustlet-wascc",
-                    &mut wascc_process.child,
-                    wascc_log_destination,
+                    "krustlet-wasmcloud",
+                    &mut wasmcloud_process.child,
+                    wasmcloud_log_destination,
                 );
             }
             Err(e) => {

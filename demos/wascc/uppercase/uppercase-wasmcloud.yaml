@@ -1,29 +1,29 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: greet
+  name: uppercase
   labels:
-    app: greet
+    app: uppercase
 spec:
   containers:
-    - image: webassembly.azurecr.io/greet-wascc:v0.5
+    - image: webassembly.azurecr.io/uppercase-wascc:v0.3
       imagePullPolicy: Always
-      name: greet
+      name: uppercase
       ports:
         - containerPort: 8080
           hostPort: 8080
   nodeSelector:
     beta.kubernetes.io/os: linux
-    beta.kubernetes.io/arch: wasm32-wascc
+    beta.kubernetes.io/arch: wasm32-wasmcloud
   tolerations:
     - key: "node.kubernetes.io/network-unavailable"
       operator: "Exists"
       effect: "NoSchedule"
     - key: "kubernetes.io/arch"
       operator: "Equal"
-      value: "wasm32-wascc"
+      value: "wasm32-wasmcloud"
       effect: "NoExecute"
     - key: "kubernetes.io/arch"
       operator: "Equal"
-      value: "wasm32-wascc"
+      value: "wasm32-wasmcloud"
       effect: "NoSchedule"

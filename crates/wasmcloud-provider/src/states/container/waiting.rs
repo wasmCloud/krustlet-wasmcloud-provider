@@ -11,10 +11,10 @@ use kubelet::pod::{Handle as PodHandle, Pod, PodKey};
 use kubelet::provider::Provider;
 
 use crate::rand::Rng;
-use crate::wascc_run;
+use crate::wasmcloud_run;
 use crate::ProviderState;
 use crate::VolumeBinding;
-use crate::WasccProvider;
+use crate::WasmCloudProvider;
 
 use super::running::Running;
 use super::terminated::Terminated;
@@ -140,7 +140,7 @@ impl State<ContainerState> for Waiting {
             )
         };
 
-        let env = <WasccProvider as Provider>::env_vars(&container, &state.pod, &client).await;
+        let env = <WasmCloudProvider as Provider>::env_vars(&container, &state.pod, &client).await;
         let volume_bindings: Vec<VolumeBinding> =
             if let Some(volume_mounts) = container.volume_mounts().as_ref() {
                 let run_context = state.run_context.read().await;
@@ -207,7 +207,7 @@ impl State<ContainerState> for Waiting {
         };
 
         match tokio::task::spawn_blocking(move || {
-            wascc_run(
+            wasmcloud_run(
                 host,
                 module_data,
                 env,
@@ -236,7 +236,7 @@ impl State<ContainerState> for Waiting {
                     self,
                     Terminated::new(
                         format!(
-                            "Pod {} container {} failed to start wascc actor: {:?}",
+                            "Pod {} container {} failed to start wasmCloud actor: {:?}",
                             state.pod.name(),
                             container.name(),
                             e
@@ -250,7 +250,7 @@ impl State<ContainerState> for Waiting {
                     self,
                     Terminated::new(
                         format!(
-                            "Pod {} container {} failed to start wascc actor: {:?}",
+                            "Pod {} container {} failed to start wasmCloud actor: {:?}",
                             state.pod.name(),
                             container.name(),
                             e

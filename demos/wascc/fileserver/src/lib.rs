@@ -9,7 +9,7 @@ actor_handlers! {
 }
 
 fn fetch(r: codec::http::Request) -> HandlerResult<codec::http::Response> {
-    // k8s volumes are mounted into the waSCC runtime using the same volume mount name
+    // k8s volumes are mounted into the wasmCloud runtime using the same volume mount name
     let store = objectstore::host("storage");
     let mut path = String::from(r.path);
 
@@ -17,16 +17,14 @@ fn fetch(r: codec::http::Request) -> HandlerResult<codec::http::Response> {
     path = path.trim_start_matches('/').to_string();
 
     match r.method.as_str() {
-        "GET" => {
-            match store.get_blob_info("", path.as_str())? {
-                Some(blob) => {
-                    if blob.id == "none" {
-                        return Ok(codec::http::Response::not_found());
-                    }
-                    Ok(codec::http::Response::json(blob, 200, "OK"))
-                },
-                None => Ok(codec::http::Response::not_found()),
+        "GET" => match store.get_blob_info("", path.as_str())? {
+            Some(blob) => {
+                if blob.id == "none" {
+                    return Ok(codec::http::Response::not_found());
+                }
+                Ok(codec::http::Response::json(blob, 200, "OK"))
             }
+            None => Ok(codec::http::Response::not_found()),
         },
         "POST" => {
             let blob = codec::blobstore::Blob {

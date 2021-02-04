@@ -2,7 +2,7 @@
 
 An example that will greet the user with an HTTP response.
 
-It is meant to be a simple demo for the wascc-provider with Krustlet.
+It is meant to be a simple demo for the wasmcloud-provider with Krustlet.
 
 ## Running the example
 
@@ -12,7 +12,7 @@ your Kubernetes cluster.
 Create the pod and configmap with `kubectl`:
 
 ```shell
-$ kubectl apply -f greet-wascc.yaml
+$ kubectl apply -f greet-wasmcloud.yaml
 ```
 
 If the container port is specified in the yaml file, but host port is not. A

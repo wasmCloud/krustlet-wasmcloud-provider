@@ -12,7 +12,7 @@ authors = [
     "Kevin Flansburg <kevin.flansburg@gmail.com>",
 ]
 edition = "2018"
-default-run = "krustlet-wascc"
+default-run = "krustlet-wasmcloud"
 description = "A Krustlet provider implementation for WASMCloud"
 repository = "hhttps://github.com/wasmCloud/krustlet-wasmcloud-provider"
 
@@ -23,7 +23,7 @@ native-tls = [
     "kube-runtime/native-tls",
     "krator/kube-native-tls",
     "kubelet/kube-native-tls",
-    "wascc-provider/native-tls",
+    "wasmcloud-provider/native-tls",
     "oci-distribution/native-tls"
 ]
 rustls-tls = [
@@ -31,7 +31,7 @@ rustls-tls = [
     "kube-runtime/rustls-tls",
     "krator/rustls-tls",
     "kubelet/rustls-tls",
-    "wascc-provider/rustls-tls",
+    "wasmcloud-provider/rustls-tls",
     "oci-distribution/rustls-tls"
 ]
 
@@ -44,7 +44,7 @@ env_logger = "0.7"
 futures = "0.3"
 krator = { version = "0.1", default-features = false }
 kubelet = { version = "0.6", default-features = false, features = ["cli"] }
-wascc-provider = { path = "./crates/wascc-provider", version = "0.6", default-features = false }
+wasmcloud-provider = { path = "./crates/wasmcloud-provider", version = "0.6", default-features = false }
 oci-distribution = { version = "0.5", default-features = false }
 dirs = "3.0"
 hostname = "0.3"
@@ -60,13 +60,13 @@ kube-runtime = { version= "0.42", default-features = false }
 
 [workspace]
 members = [
-    "crates/wascc-logging",
-    "crates/wascc-provider",
+    "crates/wasmcloud-logging",
+    "crates/wasmcloud-provider",
 ]
 
 [[bin]]
-name = "krustlet-wascc"
-path = "src/krustlet-wascc.rs"
+name = "krustlet-wasmcloud"
+path = "src/krustlet-wasmcloud.rs"
 
 [[bin]]
 name = "oneclick"

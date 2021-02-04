@@ -1,9 +1,9 @@
-# Hello World AssemblyScript for wasCC
+# Hello World AssemblyScript for wasmCloud
 
 A simple hello world example in AssemblyScript that will print the environment
 variables available to the process as an HTTP response.
 
-It is meant to be a simple demo for the wascc-provider with Krustlet.
+It is meant to be a simple demo for the wasmcloud-provider with Krustlet.
 
 ## Running the example
 
