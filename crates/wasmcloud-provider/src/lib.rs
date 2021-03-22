@@ -48,19 +48,18 @@ use kubelet::state::common::{GenericProvider, GenericProviderState};
 use kubelet::store::Store;
 use kubelet::volume::Ref;
 
-use log::{debug, info};
+use log::{debug, info, trace};
 use tempfile::NamedTempFile;
-use tokio::sync::RwLock;
-use wascc_fs::FileSystemProvider;
-use wascc_host::{Actor, Host, NativeCapability};
-use wascc_httpsrv::HttpServerProvider;
+use tokio::sync::{Mutex, RwLock};
+use wascap::jwt::{CapabilityProvider, Claims};
+use wasmcloud_fs::FileSystemProvider;
+use wasmcloud_host::{Actor, Host, HostBuilder, NativeCapability};
+use wasmcloud_httpserver::HttpServerProvider;
 use wasmcloud_logging::{LoggingProvider, LOG_PATH_KEY};
 
-extern crate rand;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use tokio::sync::Mutex as TokioMutex;
+use std::sync::Arc;
 
 mod states;
 
@@ -70,13 +69,13 @@ use states::pod::PodState;
 const TARGET_WASM32_WASMCLOUD: &str = "wasm32-wasmcloud";
 
 /// The name of the Filesystem capability.
-const FS_CAPABILITY: &str = "wascc:blobstore";
+const FS_CAPABILITY: &str = "wasmcloud:blobstore";
 
 /// The name of the HTTP capability.
-const HTTP_CAPABILITY: &str = "wascc:http_server";
+const HTTP_CAPABILITY: &str = "wasmcloud:httpserver";
 
 /// The name of the Logging capability.
-const LOG_CAPABILITY: &str = "wascc:logging";
+const LOG_CAPABILITY: &str = "wasmcloud:logging";
 
 /// The root directory of wasmCloud logs.
 const LOG_DIR_NAME: &str = "wasmcloud-logs";
@@ -106,15 +105,24 @@ impl StopHandler for ActorHandle {
         let host = self.host.clone();
         let key = self.key.clone();
         let volumes: Vec<VolumeBinding> = self.volumes.drain(0..).collect();
-        let capabilities = self.capabilities.clone();
-        tokio::task::spawn_blocking(move || {
-            let lock = host.lock().unwrap();
-            lock.remove_actor(&key)
-                .map_err(|e| anyhow::anyhow!("unable to remove actor: {:?}", e))?;
 
-            if capabilities.contains(&FS_CAPABILITY.to_owned()) {
-                for volume in volumes.into_iter() {
-                    lock.remove_native_capability(FS_CAPABILITY, Some(volume.name.clone()))
+        let lock = host.lock().await;
+
+        // NOTE: Not running these in parallel because the host is behind a mutex. None of these
+        // calls are `&mut self`, so I think we might be able to make it just a plain `Arc` instead
+        // if it starts taking a while to stop actors
+        debug!("Removing capability links");
+        for cap in self.capabilities.iter() {
+            trace!("Attempting to remove link for {} capability", cap);
+            match cap.as_str() {
+                FS_CAPABILITY => {
+                    for volume in volumes.iter() {
+                        lock.stop_provider(
+                            FS_CAPABILITY_PUBKEY,
+                            FS_CAPABILITY,
+                            Some(volume.name.clone()),
+                        )
+                        .await
                         .map_err(|e| {
                             anyhow::anyhow!(
                                 "unable to remove volume {:?} capability: {:?}",
@@ -122,15 +130,42 @@ impl StopHandler for ActorHandle {
                                 e
                             )
                         })?;
+
+                        lock.remove_link(&key, FS_CAPABILITY, Some(volume.name.clone()))
+                            .await
+                            .map_err(|e| {
+                                anyhow::anyhow!(
+                                    "unable to unlink volume {:?} capability: {:?}",
+                                    volume.name,
+                                    e
+                                )
+                            })?;
+                    }
                 }
+                HTTP_CAPABILITY => {
+                    lock.remove_link(&key, HTTP_CAPABILITY, None)
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!("unable to unlink http capability: {:?}", e)
+                        })?;
+                }
+                LOG_CAPABILITY => {
+                    lock.remove_link(&key, LOG_CAPABILITY, None)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("unable to unlink log capability: {:?}", e))?;
+                }
+                _ => info!("Found unmanged capability {}. Skipping", cap),
             }
-            Ok(())
-        })
-        .await?
+        }
+        lock.stop_actor(&key)
+            .await
+            .map_err(|e| anyhow::anyhow!("unable to remove actor: {:?}", e))?;
+
+        Ok(())
     }
 
     async fn wait(&mut self) -> anyhow::Result<()> {
-        // TODO: Figure out if there is a way to wait for an actor to be removed
+        // the `stop_actor` call should handle this ok, so we just return Ok
         Ok(())
     }
 }
@@ -154,7 +189,7 @@ pub struct ProviderState {
     volume_path: PathBuf,
     log_path: PathBuf,
     host: Arc<Mutex<Host>>,
-    port_map: Arc<TokioMutex<BTreeMap<u16, PodKey>>>,
+    port_map: Arc<Mutex<BTreeMap<u16, PodKey>>>,
     plugin_registry: Arc<PluginRegistry>,
 }
 
@@ -193,10 +228,13 @@ impl WasmCloudProvider {
         plugin_registry: Arc<PluginRegistry>,
     ) -> anyhow::Result<Self> {
         let client = kube::Client::new(kubeconfig);
-        let host = Arc::new(Mutex::new(Host::new()));
+        let host = HostBuilder::new().build();
+        host.start()
+            .await
+            .map_err(|e| anyhow::anyhow!("Unable to start wasmCloud host: {}", e.to_string()))?;
         let log_path = config.data_dir.join(LOG_DIR_NAME);
         let volume_path = config.data_dir.join(VOLUME_DIR);
-        let port_map = Arc::new(TokioMutex::new(BTreeMap::<u16, PodKey>::new()));
+        let port_map = Arc::new(Mutex::new(BTreeMap::<u16, PodKey>::new()));
         tokio::fs::create_dir_all(&log_path).await?;
         tokio::fs::create_dir_all(&volume_path).await?;
 
@@ -213,30 +251,24 @@ impl WasmCloudProvider {
         //
         // Here we are using the native capabilties as statically linked libraries that will
         // be compiled into the wasmcloud-provider binary.
-        let cloned_host = host.clone();
-        tokio::task::spawn_blocking(move || {
-            info!("Loading HTTP capability");
-            let http_provider = HttpServerProvider::new();
-            let data = NativeCapability::from_instance(http_provider, None)
+        info!("Loading HTTP capability");
+        let http_provider = HttpServerProvider::new();
+        let data =
+            NativeCapability::from_instance(http_provider, None, get_claims(HTTP_CAPABILITY))
                 .map_err(|e| anyhow::anyhow!("Failed to instantiate HTTP capability: {}", e))?;
 
-            cloned_host
-                .lock()
-                .unwrap()
-                .add_native_capability(data)
-                .map_err(|e| anyhow::anyhow!("Failed to add HTTP capability: {}", e))?;
+        host.start_native_capability(data)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to add HTTP capability: {}", e))?;
 
-            info!("Loading log capability");
-            let logging_provider = LoggingProvider::new();
-            let logging_capability = NativeCapability::from_instance(logging_provider, None)
+        info!("Loading log capability");
+        let logging_provider = LoggingProvider::new();
+        let logging_capability =
+            NativeCapability::from_instance(logging_provider, None, get_claims(LOG_CAPABILITY))
                 .map_err(|e| anyhow::anyhow!("Failed to instantiate log capability: {}", e))?;
-            cloned_host
-                .lock()
-                .unwrap()
-                .add_native_capability(logging_capability)
-                .map_err(|e| anyhow::anyhow!("Failed to add log capability: {}", e))
-        })
-        .await??;
+        host.start_native_capability(logging_capability)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to add log capability: {}", e))?;
         Ok(Self {
             shared: ProviderState {
                 client,
@@ -244,7 +276,7 @@ impl WasmCloudProvider {
                 store,
                 volume_path,
                 log_path,
-                host,
+                host: Arc::new(Mutex::new(host)),
                 port_map,
                 plugin_registry,
             },
@@ -356,6 +388,7 @@ struct VolumeBinding {
 struct Capability {
     name: &'static str,
     binding: Option<String>,
+    capability_provider_id: &'static str,
     env: EnvVars,
 }
 
@@ -375,7 +408,7 @@ impl kubelet::log::HandleFactory<tokio::fs::File> for LogHandleFactory {
 ///
 /// The provided capabilities will be configured for this actor, but the capabilities
 /// must first be loaded into the host by some other process, such as register_native_capabilities().
-fn wasmcloud_run(
+async fn wasmcloud_run(
     host: Arc<Mutex<Host>>,
     data: Vec<u8>,
     env: EnvVars,
@@ -402,6 +435,7 @@ fn wasmcloud_run(
         capabilities.push(Capability {
             name: LOG_CAPABILITY,
             binding: None,
+            capability_provider_id: LOG_CAPABILITY_PUBKEY,
             env: logenv,
         });
     }
@@ -412,50 +446,61 @@ fn wasmcloud_run(
         capabilities.push(Capability {
             name: HTTP_CAPABILITY,
             binding: None,
+            capability_provider_id: HTTP_CAPABILITY_PUBKEY,
             env: httpenv,
         });
     }
+    {
+        let lock = host.lock().await;
+        if actor_caps.contains(&FS_CAPABILITY.to_owned()) {
+            for vol in &volumes {
+                info!(
+                    "Loading File System capability for volume name: '{}' host_path: '{}'",
+                    vol.name,
+                    vol.host_path.display()
+                );
+                let mut fsenv = env.clone();
+                fsenv.insert(
+                    FS_CONFIG_ROOTDIR.to_owned(),
+                    vol.host_path.as_path().to_str().unwrap().to_owned(),
+                );
+                let fs_provider = FileSystemProvider::new();
+                let fs_capability = NativeCapability::from_instance(
+                    fs_provider,
+                    Some(vol.name.clone()),
+                    get_claims(FS_CAPABILITY),
+                )
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to instantiate File System capability: {}", e)
+                })?;
+                lock.start_native_capability(fs_capability)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to add File System capability: {}", e))?;
+                capabilities.push(Capability {
+                    name: FS_CAPABILITY,
+                    binding: Some(vol.name.clone()),
+                    capability_provider_id: FS_CAPABILITY_PUBKEY,
+                    env: fsenv,
+                });
+            }
+        }
 
-    if actor_caps.contains(&FS_CAPABILITY.to_owned()) {
-        for vol in &volumes {
-            info!(
-                "Loading File System capability for volume name: '{}' host_path: '{}'",
-                vol.name,
-                vol.host_path.display()
-            );
-            let mut fsenv = env.clone();
-            fsenv.insert(
-                FS_CONFIG_ROOTDIR.to_owned(),
-                vol.host_path.as_path().to_str().unwrap().to_owned(),
-            );
-            let fs_provider = FileSystemProvider::new();
-            let fs_capability =
-                NativeCapability::from_instance(fs_provider, Some(vol.name.clone())).map_err(
-                    |e| anyhow::anyhow!("Failed to instantiate File System capability: {}", e),
-                )?;
-            host.lock()
-                .unwrap()
-                .add_native_capability(fs_capability)
-                .map_err(|e| anyhow::anyhow!("Failed to add File System capability: {}", e))?;
-            capabilities.push(Capability {
-                name: FS_CAPABILITY,
-                binding: Some(vol.name.clone()),
-                env: fsenv,
-            });
+        lock.start_actor(load)
+            .await
+            .map_err(|e| anyhow::anyhow!("Error adding actor: {}", e))?;
+        for cap in capabilities {
+            info!("configuring capability {}", cap.name);
+            lock.set_link(
+                &pk,
+                cap.name,
+                cap.binding.clone(),
+                cap.capability_provider_id.to_owned(),
+                cap.env.clone(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Error configuring capabilities for module: {}", e))?;
         }
     }
-
-    host.lock()
-        .unwrap()
-        .add_actor(load)
-        .map_err(|e| anyhow::anyhow!("Error adding actor: {}", e))?;
-    capabilities.iter().try_for_each(|cap| {
-        info!("configuring capability {}", cap.name);
-        host.lock()
-            .unwrap()
-            .set_binding(&pk, cap.name, cap.binding.clone(), cap.env.clone())
-            .map_err(|e| anyhow::anyhow!("Error configuring capabilities for module: {}", e))
-    })?;
 
     let log_handle_factory = LogHandleFactory { temp: log_output };
 
@@ -469,4 +514,30 @@ fn wasmcloud_run(
         },
         log_handle_factory,
     ))
+}
+
+// This code contains the embedded claims needed to register the 3 providers. The public key comes
+// from the `sub` claim on each token. These tokens were generated with the following commands:
+//
+// `wash claims token provider --capid wasmcloud:blobstore --name "wasmCloud FS capability" --vendor wasmCloud`
+// `wash claims token provider --capid wasmcloud:httpserver --name "wasmCloud HTTP server capability" --vendor wasmCloud`
+// `wash claims token provider --capid wasmcloud:logging --name "wasmCloud krustlet logging capability" --vendor krustlet`
+
+const FS_CAPABILITY_JWT: &str = "eyJ0eXAiOiJqd3QiLCJhbGciOiJFZDI1NTE5In0.eyJqdGkiOiJtaHF4dnJ2djdRdHZNdWFSRVFlcTlyIiwiaWF0IjoxNjE3MTQ1ODA4LCJpc3MiOiJBQ1hZUE1BTlg1Uk5UTks0R1VVUEtFU1BQWU9DNEhPQ0RITlJFT0IySzVEVk82SUdIM0RENEtQVSIsInN1YiI6IlZBM1haSlhQUlRUN0o3WFhKRTI0TE1QSzdIUVI3M1cyVE9aU0o2NFpaTU80WVdNSU8yU0IzSUIyIiwid2FzY2FwIjp7Im5hbWUiOiJ3YXNtQ2xvdWQgRlMgY2FwYWJpbGl0eSIsImNhcGlkIjoid2FzbWNsb3VkOmJsb2JzdG9yZSIsInZlbmRvciI6Indhc21DbG91ZCIsInRhcmdldF9oYXNoZXMiOnt9fX0.rjxaEENSxMPiWIPA2R8VxiO-cNLoDRcXMKcbVC5fR966Tb7VhqK-DH9RJ7Oj6T5OgJpjqrempDqSqA4LdREjDg";
+const FS_CAPABILITY_PUBKEY: &str = "VA3XZJXPRTT7J7XXJE24LMPK7HQR73W2TOZSJ64ZZMO4YWMIO2SB3IB2";
+const HTTP_CAPABILITY_JWT: &str = "eyJ0eXAiOiJqd3QiLCJhbGciOiJFZDI1NTE5In0.eyJqdGkiOiJiTHl0ODdTbnVxY2RJdmUxWkVxRkExIiwiaWF0IjoxNjE3MTQ1ODM1LCJpc3MiOiJBQ1hZUE1BTlg1Uk5UTks0R1VVUEtFU1BQWU9DNEhPQ0RITlJFT0IySzVEVk82SUdIM0RENEtQVSIsInN1YiI6IlZCSDNNRkNFRFBRUFNJWUtVQzdJVVc3UlUyRzZYWEVKRjM0Uk8yNldWUlRHR0U0VVE1WFRBM1ZRIiwid2FzY2FwIjp7Im5hbWUiOiJ3YXNtQ2xvdWQgSFRUUCBzZXJ2ZXIgY2FwYWJpbGl0eSIsImNhcGlkIjoid2FzbWNsb3VkOmh0dHBzZXJ2ZXIiLCJ2ZW5kb3IiOiJ3YXNtQ2xvdWQiLCJ0YXJnZXRfaGFzaGVzIjp7fX19.gPhGiHq953a4w9cv1ZI_Hn9l7jQCcjiihL5ofmTjEQZk6mPIvK4lZSI-LIJQp7wZKVMFIe3bcs4Vdifhwq8ACg";
+const HTTP_CAPABILITY_PUBKEY: &str = "VBH3MFCEDPQPSIYKUC7IUW7RU2G6XXEJF34RO26WVRTGGE4UQ5XTA3VQ";
+const LOG_CAPABILITY_JWT: &str = "eyJ0eXAiOiJqd3QiLCJhbGciOiJFZDI1NTE5In0.eyJqdGkiOiJqSnJ5cDRFWnFTdU5RYlY0dVVXbmVRIiwiaWF0IjoxNjE3MTQ1ODY0LCJpc3MiOiJBQ1hZUE1BTlg1Uk5UTks0R1VVUEtFU1BQWU9DNEhPQ0RITlJFT0IySzVEVk82SUdIM0RENEtQVSIsInN1YiI6IlZESVlXNjMyMzdWSlFTSElTS1BCTzJDUTY3NE9QSTVaQ1ZXUTJQWFRBNEhJWU81TFhITEwzRFhRIiwid2FzY2FwIjp7Im5hbWUiOiJ3YXNtQ2xvdWQga3J1c3RsZXQgbG9nZ2luZyBjYXBhYmlsaXR5IiwiY2FwaWQiOiJ3YXNtY2xvdWQ6bG9nZ2luZyIsInZlbmRvciI6ImtydXN0bGV0IiwidGFyZ2V0X2hhc2hlcyI6e319fQ.SOqvIkPbFuPt5isr58CpLDV9Zbnmy5WzFR7cX5gBYc0fNbyY5qmtj1CLvzzQm1n0AamD-hFN_8UTNlx67y0tCg";
+const LOG_CAPABILITY_PUBKEY: &str = "VDIYW63237VJQSHISKPBO2CQ674OPI5ZCVWQ2PXTA4HIYO5LXHLL3DXQ";
+
+/// gets the proper claims for the given capability. Panics if the capability claim doesn't exist
+fn get_claims(capid: &str) -> Claims<CapabilityProvider> {
+    let token = match capid {
+        FS_CAPABILITY => FS_CAPABILITY_JWT,
+        HTTP_CAPABILITY => HTTP_CAPABILITY_JWT,
+        LOG_CAPABILITY => LOG_CAPABILITY_JWT,
+        _ => panic!("Unknown capability {}", capid),
+    };
+
+    Claims::<CapabilityProvider>::decode(token).unwrap()
 }

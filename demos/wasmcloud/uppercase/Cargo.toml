@@ -1,0 +1,20 @@
+[package]
+name = "uppercase"
+version = "0.4.0"
+authors = ["Brian Ketelsen <mail@bjk.fyi>"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+log = '0.4.8'
+serde = { version = "1.0", features = ["derive"]}
+wasmcloud-actor-core = { version = "0.2", features = ["guest"] }
+wapc-guest = "0.4"
+wasmcloud-actor-http-server = { version = "0.1", features = ["guest"] }
+
+[profile.release]
+opt-level = "s"
+
+[workspace]

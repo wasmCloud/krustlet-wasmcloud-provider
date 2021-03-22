@@ -1,0 +1,20 @@
+[package]
+name = "greet"
+version = "0.6.0"
+authors = ["Matthew Fisher <matt.fisher@microsoft.com"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasmcloud-actor-core = { version = "0.2", features = ["guest"] }
+wapc-guest = "0.4"
+wasmcloud-actor-http-server = { version = "0.1", features = ["guest"] }
+wasmcloud-actor-logging = { version = "0.1", features = ["guest"] }
+log = "0.4"
+
+[profile.release]
+opt-level = "s"
+
+[workspace]

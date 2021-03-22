@@ -4,13 +4,13 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use log::{debug, error, info};
+use rand::Rng;
 use tokio::sync::Mutex;
 
 use kubelet::container::state::prelude::*;
 use kubelet::pod::{Handle as PodHandle, Pod, PodKey};
 use kubelet::provider::Provider;
 
-use crate::rand::Rng;
 use crate::wasmcloud_run;
 use crate::ProviderState;
 use crate::VolumeBinding;
@@ -43,7 +43,7 @@ async fn find_available_port(
     let mut empty_port: BTreeSet<u16> = BTreeSet::new();
     let mut lock = port_map.lock().await;
     while empty_port.len() < 2768 {
-        let generated_port: u16 = rand::thread_rng().gen_range(30000, 32768);
+        let generated_port: u16 = rand::thread_rng().gen_range(30000..=32768);
         if !lock.contains_key(&generated_port) {
             lock.insert(generated_port, pod_key);
             return Ok(generated_port);
@@ -206,19 +206,17 @@ impl State<ContainerState> for Waiting {
             }
         };
 
-        match tokio::task::spawn_blocking(move || {
-            wasmcloud_run(
-                host,
-                module_data,
-                env,
-                volume_bindings,
-                &log_path,
-                port_assigned,
-            )
-        })
+        match wasmcloud_run(
+            host,
+            module_data,
+            env,
+            volume_bindings,
+            &log_path,
+            port_assigned,
+        )
         .await
         {
-            Ok(Ok(container_handle)) => {
+            Ok(container_handle) => {
                 let pod_key = PodKey::from(&state.pod);
                 {
                     let provider_state = shared.write().await;
@@ -230,20 +228,6 @@ impl State<ContainerState> for Waiting {
                         .insert_container_handle(state.container_key.clone(), container_handle)
                         .await;
                 }
-            }
-            Ok(Err(e)) => {
-                return Transition::next(
-                    self,
-                    Terminated::new(
-                        format!(
-                            "Pod {} container {} failed to start wasmCloud actor: {:?}",
-                            state.pod.name(),
-                            container.name(),
-                            e
-                        ),
-                        true,
-                    ),
-                )
             }
             Err(e) => {
                 return Transition::next(
