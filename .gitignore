@@ -1,3 +1,6 @@
-/target
+target/
 /.vscode
 .DS_Store
+
+# From demos
+node_modules/

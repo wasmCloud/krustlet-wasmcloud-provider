@@ -32,7 +32,7 @@ async fn test_wasmcloud_provider() -> Result<(), Box<dyn std::error::Error>> {
         if tries == 10 {
             panic!("wasmCloud pod failed 10 readiness checks.");
         }
-        tokio::time::delay_for(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 
     let logs = pods
@@ -41,8 +41,7 @@ async fn test_wasmcloud_provider() -> Result<(), Box<dyn std::error::Error>> {
         .expect("unable to get logs");
     assert!(logs.contains("warn something"));
     assert!(logs.contains("info something"));
-    assert!(logs.contains("raw msg I'm a Body!"));
-    assert!(logs.contains("error body"));
+    assert!(logs.contains("error something"));
 
     Ok(())
 }
@@ -117,7 +116,7 @@ async fn create_wasmcloud_pod(client: kube::Client, pods: &Api<Pod>) -> anyhow::
             "containers": [
                 {
                     "name": "greet-wasmcloud",
-                    "image": "webassembly.azurecr.io/greet-wascc:v0.4",
+                    "image": "webassembly.azurecr.io/greet-wasmcloud:v0.6.0",
                     "ports": [
                         {
                             "containerPort": 8080,
@@ -157,7 +156,7 @@ struct WasmCloudTestResourceCleaner {}
 impl Drop for WasmCloudTestResourceCleaner {
     fn drop(&mut self) {
         let t = std::thread::spawn(move || {
-            let mut rt =
+            let rt =
                 tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime for cleanup");
             rt.block_on(clean_up_wasmcloud_test_resources());
         });

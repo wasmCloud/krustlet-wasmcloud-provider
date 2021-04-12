@@ -1,0 +1,20 @@
+{
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "build": "asc assembly/index.ts -b build/helloworld-as.wasm --use abort=assembly/index/abort --optimize",
+        "asbuild:untouched": "asc assembly/index.ts -b build/untouched.wasm -t build/untouched.wat --use abort=assembly/index/abort --debug",
+        "asbuild:optimized": "asc assembly/index.ts -b build/optimized.wasm -t build/optimized.wat --use abort=assembly/index/abort --optimize",
+        "asbuild": "npm run asbuild:untouched && npm run asbuild:optimized"
+    },
+    "dependencies": {
+        "@wapc/as-guest": "^v0.2.1",
+        "@wapc/as-msgpack": "^0.1.11",
+        "@wasmcloud/actor-core": "^0.1.1",
+        "@wasmcloud/actor-http-server": "^0.1.2"
+    },
+    "devDependencies": {
+        "assemblyscript": "^0.17.1",
+        "graphql-schema-linter": "^0.2.0",
+        "prettier": "^2.0.2"
+    }
+}

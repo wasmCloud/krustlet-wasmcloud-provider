@@ -283,7 +283,7 @@ fn launch_kubelet(
         .env("KUBECONFIG", kubeconfig)
         .env(
             "RUST_LOG",
-            "wascc_host=debug,wasmcloud_provider=debug,main=debug",
+            "wasmcloud_host=debug,wasmcloud_provider=debug,main=debug",
         )
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

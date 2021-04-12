@@ -17,7 +17,7 @@ impl State<ContainerState> for Running {
         _container: Manifest<Container>,
     ) -> Transition<ContainerState> {
         loop {
-            tokio::time::delay_for(std::time::Duration::from_secs(10)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         }
     }
 

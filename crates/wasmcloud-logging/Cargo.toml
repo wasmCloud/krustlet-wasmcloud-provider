@@ -1,6 +1,6 @@
 [package]
 name = "wasmcloud-logging"
-version = "0.1.0"
+version = "0.3.0"
 authors = [
     "Matt Butcher <matt.butcher@microsoft.com>",
     "Matthew Fisher <matt.fisher@microsoft.com>",
@@ -21,7 +21,9 @@ crate-type = ["cdylib", "rlib"]
 static_plugin = [] # Enable to statically compile this into a host
 
 [dependencies]
-wascc-codec = "0.8"
 log = "0.4"
-simplelog = "0.8"
+simplelog = "0.9"
 tempfile = "3.1"
+wasmcloud-provider-core = "0.1"
+wasmcloud-actor-core = "0.2"
+wasmcloud-actor-logging = "0.1"

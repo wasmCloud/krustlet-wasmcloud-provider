@@ -16,29 +16,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(not(feature = "static_plugin"))]
-#[macro_use]
-extern crate wascc_codec;
+use wasmcloud_actor_core::{CapabilityConfiguration, HealthCheckResponse};
+use wasmcloud_actor_logging::{WriteLogArgs, OP_LOG};
+use wasmcloud_provider_core::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
+use wasmcloud_provider_core::core::{OP_BIND_ACTOR, OP_HEALTH_REQUEST, OP_REMOVE_ACTOR};
+use wasmcloud_provider_core::{deserialize, serialize};
 
-use wascc_codec::capabilities::{
-    CapabilityDescriptor, CapabilityProvider, Dispatcher, NullDispatcher, OperationDirection,
-    OP_GET_CAPABILITY_DESCRIPTOR,
-};
-use wascc_codec::core::{CapabilityConfiguration, OP_BIND_ACTOR, OP_REMOVE_ACTOR};
-use wascc_codec::{
-    deserialize,
-    logging::{WriteLogRequest, OP_LOG},
-    serialize,
-};
-
-extern crate log;
 use log::Log;
 
 use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
 use std::error::Error;
 use std::fs::{File, OpenOptions};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use simplelog::{Config, LevelFilter, WriteLogger};
 
@@ -47,34 +36,31 @@ capability_provider!(LoggingProvider, LoggingProvider::new);
 
 pub const LOG_PATH_KEY: &str = "LOG_PATH";
 
-/// Origin of messages coming from wascc host
+/// Origin of messages coming from wasmcloud host
 const SYSTEM_ACTOR: &str = "system";
 
-const CAPABILITY_ID: &str = "wascc:logging";
+#[allow(dead_code)]
+const CAPABILITY_ID: &str = "wasmcloud:logging";
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const ERROR: &str = "error";
+const WARN: &str = "warn";
+const INFO: &str = "info";
+const DEBUG: &str = "debug";
+const TRACE: &str = "trace";
 
-enum LogLevel {
-    NONE = 0,
-    ERROR,
-    WARN,
-    INFO,
-    DEBUG,
-    TRACE,
-}
-
-/// LoggingProvider provides an implementation of the wascc:logging capability
+/// LoggingProvider provides an implementation of the wasmcloud:logging capability
 /// that keeps separate log output for each actor.
+#[derive(Clone)]
 pub struct LoggingProvider {
-    dispatcher: RwLock<Box<dyn Dispatcher>>,
-    output_map: RwLock<HashMap<String, Box<WriteLogger<File>>>>,
+    dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
+    output_map: Arc<RwLock<HashMap<String, Box<WriteLogger<File>>>>>,
 }
 
 impl Default for LoggingProvider {
     fn default() -> Self {
         LoggingProvider {
-            dispatcher: RwLock::new(Box::new(NullDispatcher::new())),
-            output_map: RwLock::new(HashMap::new()),
+            dispatcher: Arc::new(RwLock::new(Box::new(NullDispatcher::new()))),
+            output_map: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -98,20 +84,6 @@ impl LoggingProvider {
         let mut output_map = self.output_map.write().unwrap();
         output_map.insert(config.module, logger);
         Ok(vec![])
-    }
-
-    fn get_descriptor(&self) -> Result<Vec<u8>, Box<dyn Error + Sync + Send>> {
-        Ok(serialize(
-            CapabilityDescriptor::builder()
-                .id(CAPABILITY_ID)
-                .name("krustlet Logging Provider")
-                .long_description("A waSCC logging capability provider")
-                .version(VERSION)
-                // NOTE(bacongobbler): this crate is never published, so we never need to increment the revision above 1
-                .revision(1)
-                .with_operation(OP_LOG, OperationDirection::ToProvider, "Send a log message")
-                .build(),
-        )?)
     }
 }
 
@@ -142,17 +114,19 @@ impl CapabilityProvider for LoggingProvider {
                 self.configure(cfg_vals)
             }
             (OP_REMOVE_ACTOR, SYSTEM_ACTOR) => Ok(vec![]),
-            (OP_GET_CAPABILITY_DESCRIPTOR, SYSTEM_ACTOR) => self.get_descriptor(),
+            (OP_HEALTH_REQUEST, SYSTEM_ACTOR) => Ok(serialize(HealthCheckResponse {
+                healthy: true,
+                message: "".to_string(),
+            })?),
             (OP_LOG, _) => {
-                let log_msg = deserialize::<WriteLogRequest>(msg)?;
+                let log_msg = deserialize::<WriteLogArgs>(msg)?;
 
-                let level = match log_msg.level.try_into() {
-                    Ok(LogLevel::ERROR) => log::Level::Error,
-                    Ok(LogLevel::WARN) => log::Level::Warn,
-                    Ok(LogLevel::INFO) => log::Level::Info,
-                    Ok(LogLevel::DEBUG) => log::Level::Debug,
-                    Ok(LogLevel::TRACE) => log::Level::Trace,
-                    Ok(LogLevel::NONE) => return Ok(vec![]),
+                let level = match &*log_msg.level {
+                    ERROR => log::Level::Error,
+                    WARN => log::Level::Warn,
+                    INFO => log::Level::Info,
+                    DEBUG => log::Level::Debug,
+                    TRACE => log::Level::Trace,
                     _ => return Err(format!("Unknown log level {}", log_msg.level).into()),
                 };
 
@@ -162,8 +136,9 @@ impl CapabilityProvider for LoggingProvider {
                     .ok_or(format!("Unable to find logger for actor {}", actor))?;
                 logger.log(
                     &log::Record::builder()
-                        .args(format_args!("[{}] {}", actor, log_msg.body))
+                        .args(format_args!("[{}] {}", actor, log_msg.text))
                         .level(level)
+                        .target(&log_msg.target)
                         .build(),
                 );
                 Ok(vec![])
@@ -171,20 +146,7 @@ impl CapabilityProvider for LoggingProvider {
             _ => Err(format!("Unknown operation: {}", op).into()),
         }
     }
-}
 
-impl TryFrom<u32> for LogLevel {
-    type Error = ();
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
-        let level = match value {
-            x if x == LogLevel::ERROR as u32 => LogLevel::ERROR,
-            x if x == LogLevel::WARN as u32 => LogLevel::WARN,
-            x if x == LogLevel::INFO as u32 => LogLevel::INFO,
-            x if x == LogLevel::DEBUG as u32 => LogLevel::DEBUG,
-            x if x == LogLevel::TRACE as u32 => LogLevel::TRACE,
-            x if x == LogLevel::NONE as u32 => LogLevel::NONE,
-            _ => return Err(()),
-        };
-        Ok(level)
-    }
+    // No cleanup needed on stop
+    fn stop(&self) {}
 }
