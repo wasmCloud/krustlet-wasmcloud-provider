@@ -1,3 +1,12 @@
+**Deprecation Notice**: After much discussion among maintainers, we have decided to deprecate this
+repo in favor of the new [wasmCloud Helm Chart](https://github.com/wasmCloud/wasmcloud-otp/tree/main/wasmcloud_host/chart).
+We arrived at this decision due to 2 main reasons. First, the amount of work to bring this up to date
+with both Krustlet 1.0 and the shiny new 0.50+ wasmCloud host is more than we are able to commit
+to at this time. More importantly, running your wasmCloud actors on wasmCloud-specific nodes severely
+limits the rich feature set wasmCloud provides. To that end we created the Helm chart, which allows
+you to run and easily scale wasmCloud hosts running as Kubernetes pods. This enables integration
+with existing services running in Kubernetes while not hampering the power of wasmCloud.
+
 # wasmCloud Krustlet provider
 
 This is a [Krustlet](https://github.com/deislabs/krustlet)
